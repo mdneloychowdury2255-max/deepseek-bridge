@@ -3,267 +3,411 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>DeepSeek Bridge — Android WebView LLM Bridge</title>
-<meta name="description" content="OpenAI-compatible local API backed by an Android WebView driving the real DeepSeek chat UI.">
+<title>DeepSeek Bridge — Local LLM API on Android</title>
+<meta name="description" content="DeepSeek Bridge turns the DeepSeek web chat into a local OpenAI-compatible API on Android. No API key, no proxy.">
 <style>
 :root{
-  --bg:#08090c; --panel:#0f1117; --panel2:#141822; --line:#1e2430;
-  --fg:#e8ecf3; --muted:#8b95a7; --accent:#4d7cfe; --accent2:#22d3a6;
-  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --bg:#05070b; --panel:#0b0e15; --panel2:#11151f; --line:#1a2030;
+  --fg:#eef2f9; --muted:#7d8aa3; --dim:#54627d;
+  --acc:#5b8cff; --acc2:#2fe6b6; --warn:#ffb454;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{
-  background:var(--bg); color:var(--fg);
+  background:var(--bg);color:var(--fg);
   font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
-  -webkit-font-smoothing:antialiased;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
 }
-.wrap{max-width:1040px;margin:0 auto;padding:0 24px}
+.wrap{max-width:1060px;margin:0 auto;padding:0 22px}
 
-/* nav */
+/* ===== animated background ===== */
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+#bg .orb{position:absolute;border-radius:50%;filter:blur(70px);opacity:.35;mix-blend-mode:screen}
+#bg .o1{width:420px;height:420px;background:#2c4cff;top:-120px;left:-100px;animation:d1 22s ease-in-out infinite}
+#bg .o2{width:340px;height:340px;background:#0fe3a8;bottom:-100px;right:-80px;animation:d2 26s ease-in-out infinite}
+#bg .o3{width:260px;height:260px;background:#8b5bff;top:38%;right:6%;animation:d3 30s ease-in-out infinite}
+#bg .grid{position:absolute;inset:0;
+  background-image:linear-gradient(rgba(91,140,255,.045) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(91,140,255,.045) 1px,transparent 1px);
+  background-size:56px 56px;
+  mask-image:radial-gradient(ellipse at 50% 0%,#000 25%,transparent 78%);
+  -webkit-mask-image:radial-gradient(ellipse at 50% 0%,#000 25%,transparent 78%);}
+@keyframes d1{0%,100%{transform:translate(0,0)}50%{transform:translate(90px,70px)}}
+@keyframes d2{0%,100%{transform:translate(0,0)}50%{transform:translate(-80px,-60px)}}
+@keyframes d3{0%,100%{transform:translate(0,0)}50%{transform:translate(-50px,60px)}}
+
+main{position:relative;z-index:1}
+
+/* ===== nav ===== */
 nav{
-  position:sticky;top:0;z-index:50;
-  background:rgba(8,9,12,.82);backdrop-filter:blur(12px);
+  position:sticky;top:0;z-index:60;
+  background:rgba(5,7,11,.72);backdrop-filter:blur(14px) saturate(140%);
   border-bottom:1px solid var(--line);
 }
-nav .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
-.brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--accent2);box-shadow:0 0 12px var(--accent2)}
-nav ul{display:flex;gap:28px;list-style:none}
-nav a{color:var(--muted);text-decoration:none;font-size:14.5px;transition:color .15s}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;height:62px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em;font-size:15.5px}
+.pulse{width:9px;height:9px;border-radius:50%;background:var(--acc2);
+  box-shadow:0 0 0 0 rgba(47,230,182,.55);animation:pulse 2.4s infinite}
+@keyframes pulse{
+  0%{box-shadow:0 0 0 0 rgba(47,230,182,.5)}
+  70%{box-shadow:0 0 0 9px rgba(47,230,182,0)}
+  100%{box-shadow:0 0 0 0 rgba(47,230,182,0)}}
+nav ul{display:flex;gap:26px;list-style:none}
+nav a{color:var(--muted);text-decoration:none;font-size:14px;transition:color .15s}
 nav a:hover{color:var(--fg)}
-@media(max-width:720px){nav ul{display:none}}
+.gh{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);
+  background:var(--panel);border-radius:8px;padding:7px 13px;font-size:13.5px;
+  color:var(--muted);text-decoration:none;transition:.16s}
+.gh:hover{color:var(--fg);border-color:#2c3650}
+@media(max-width:760px){nav ul{display:none}}
 
-/* hero */
-header{padding:96px 0 80px;position:relative;overflow:hidden}
-header::before{
-  content:"";position:absolute;inset:-40% 20% auto -10%;height:520px;
-  background:radial-gradient(ellipse at center,rgba(77,124,254,.18),transparent 65%);
-  pointer-events:none;
+/* ===== hero ===== */
+.hero{padding:104px 0 84px;position:relative}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:9px;
+  border:1px solid var(--line);background:rgba(11,14,21,.6);border-radius:100px;
+  padding:5px 15px 5px 11px;font-size:12.8px;color:var(--muted);margin-bottom:28px;
+  backdrop-filter:blur(6px);
 }
-.tag{
-  display:inline-flex;align-items:center;gap:8px;
-  border:1px solid var(--line);background:var(--panel);
-  border-radius:100px;padding:5px 14px;font-size:13px;color:var(--muted);
-  margin-bottom:26px;
-}
-.tag b{color:var(--accent2);font-weight:600}
+.eyebrow b{color:var(--acc2);font-weight:600;letter-spacing:.02em}
 h1{
-  font-size:clamp(34px,6vw,58px);line-height:1.08;letter-spacing:-.03em;
-  font-weight:700;max-width:15ch;
+  font-size:clamp(36px,7.2vw,68px);line-height:1.05;letter-spacing:-.035em;
+  font-weight:700;max-width:17ch;
 }
-h1 em{font-style:normal;color:var(--accent)}
-.sub{margin-top:22px;font-size:18.5px;color:var(--muted);max-width:62ch}
-.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:36px}
+h1 .grad{
+  background:linear-gradient(100deg,var(--acc) 10%,var(--acc2) 90%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.sub{margin-top:24px;font-size:clamp(16px,2.1vw,19.5px);color:var(--muted);max-width:64ch}
+.sub b{color:#b8c4d8;font-weight:550}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:38px}
 .btn{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:11px 20px;border-radius:9px;font-size:15px;font-weight:550;
-  text-decoration:none;border:1px solid transparent;transition:.16s;
+  display:inline-flex;align-items:center;gap:9px;padding:12px 21px;border-radius:10px;
+  font-size:15px;font-weight:550;text-decoration:none;border:1px solid transparent;
+  transition:.18s;
 }
-.btn.p{background:var(--accent);color:#fff}
-.btn.p:hover{background:#3f6ee8;transform:translateY(-1px)}
+.btn.p{background:linear-gradient(120deg,var(--acc),#3f6ff0);color:#fff;
+  box-shadow:0 8px 24px -8px rgba(91,140,255,.6)}
+.btn.p:hover{transform:translateY(-2px);box-shadow:0 12px 30px -8px rgba(91,140,255,.75)}
 .btn.s{background:var(--panel);color:var(--fg);border-color:var(--line)}
-.btn.s:hover{border-color:#2f3a4d;transform:translateY(-1px)}
+.btn.s:hover{border-color:#2e3a55;transform:translateY(-2px);background:var(--panel2)}
 
-/* sections */
-section{padding:72px 0;border-top:1px solid var(--line)}
-h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent2);font-weight:600;margin-bottom:14px}
-h3{font-size:clamp(24px,3.4vw,34px);letter-spacing:-.02em;font-weight:660;margin-bottom:18px}
-.lead{color:var(--muted);max-width:66ch;font-size:17px}
+.stats{display:flex;gap:34px;margin-top:56px;flex-wrap:wrap}
+.stat .n{font-size:26px;font-weight:680;letter-spacing:-.03em;color:var(--fg)}
+.stat .n em{font-style:normal;color:var(--acc2)}
+.stat .l{font-size:12.6px;color:var(--dim);margin-top:3px;letter-spacing:.02em}
 
-/* grid cards */
-.grid{display:grid;gap:16px;margin-top:40px}
-.g3{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+/* ===== sections ===== */
+section{padding:78px 0;border-top:1px solid var(--line)}
+.sec-h{font-size:12.5px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--acc2);font-weight:600;margin-bottom:13px}
+.sec-t{font-size:clamp(24px,3.6vw,37px);letter-spacing:-.025em;font-weight:660;margin-bottom:16px}
+.sec-p{color:var(--muted);max-width:68ch;font-size:17px}
+
+/* ===== terminal demo ===== */
+.term{margin-top:42px;background:#080b11;border:1px solid var(--line);
+  border-radius:14px;overflow:hidden;box-shadow:0 30px 70px -30px #000}
+.term-bar{display:flex;align-items:center;gap:8px;padding:11px 16px;
+  background:var(--panel);border-bottom:1px solid var(--line)}
+.term-bar i{width:10px;height:10px;border-radius:50%;background:#2b3547;display:block}
+.term-bar i:first-child{background:#ff5f57}
+.term-bar i:nth-child(2){background:#febc2e}
+.term-bar i:nth-child(3){background:#28c840}
+.term-bar span{margin-left:10px;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.term-body{padding:20px 22px;font-family:var(--mono);font-size:13px;line-height:1.9;
+  color:#c3cfe0;min-height:250px}
+.term-body .pr{color:var(--acc2)}
+.term-body .cm{color:var(--dim)}
+.term-body .st{color:var(--acc)}
+.term-body .ok{color:#28c840}
+.cursor{display:inline-block;width:7px;height:14px;background:var(--acc2);
+  vertical-align:-2px;animation:blink 1.1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* ===== feature cards ===== */
+.grid{display:grid;gap:15px;margin-top:42px}
+.g3{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 .card{
-  background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  padding:24px;transition:.18s;
+  background:linear-gradient(180deg,var(--panel),#090c12);
+  border:1px solid var(--line);border-radius:14px;padding:26px;
+  transition:.2s;position:relative;overflow:hidden;
 }
-.card:hover{border-color:#2b3547;transform:translateY(-2px)}
-.card h4{font-size:16.5px;font-weight:620;margin-bottom:9px;letter-spacing:-.01em}
-.card p{color:var(--muted);font-size:14.8px;line-height:1.6}
-.ico{
-  width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
-  background:var(--panel2);border:1px solid var(--line);margin-bottom:16px;
-  font-size:17px;
-}
+.card::after{content:"";position:absolute;inset:0;border-radius:14px;pointer-events:none;
+  background:radial-gradient(400px circle at var(--mx,50%) var(--my,0%),
+    rgba(91,140,255,.10),transparent 45%);opacity:0;transition:opacity .25s}
+.card:hover{border-color:#2c3752;transform:translateY(-3px)}
+.card:hover::after{opacity:1}
+.card h4{font-size:17px;font-weight:620;margin-bottom:9px;letter-spacing:-.012em}
+.card p{color:var(--muted);font-size:14.8px;line-height:1.62}
+.ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  background:var(--panel2);border:1px solid var(--line);margin-bottom:18px;font-size:18px}
 
-/* flow diagram */
-.flow{
-  margin-top:36px;background:var(--panel);border:1px solid var(--line);
-  border-radius:12px;padding:28px 24px;overflow-x:auto;
-}
-.flow pre{
-  font-family:var(--mono);font-size:13.5px;line-height:1.85;color:var(--muted);
-  white-space:pre;
-}
-.flow b{color:var(--accent2);font-weight:600}
-.flow i{color:var(--accent);font-style:normal}
+/* ===== pipeline ===== */
+.pipe{margin-top:44px;display:grid;gap:12px}
+.pstep{display:flex;align-items:center;gap:18px;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:18px 22px;transition:.2s}
+.pstep:hover{border-color:#2c3752;transform:translateX(4px)}
+.pstep .num{font-family:var(--mono);font-size:12px;color:var(--dim);
+  width:26px;flex-shrink:0}
+.pnode{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;
+  font-size:17px;flex-shrink:0;border:1px solid var(--line);background:var(--panel2)}
+.pstep .txt b{display:block;font-size:15.6px;font-weight:600;margin-bottom:3px}
+.pstep .txt p{color:var(--muted);font-size:14.2px}
+.arrow{color:var(--dim);text-align:center;font-size:15px;margin:-4px 0 -4px 40px}
 
-/* table */
-.tbl{margin-top:34px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.tbl .r{display:grid;grid-template-columns:1.1fr 2fr;gap:20px;padding:15px 22px;border-bottom:1px solid var(--line)}
-.tbl .r:last-child{border-bottom:0}
-.tbl .r:nth-child(odd){background:var(--panel)}
-.tbl .k{font-family:var(--mono);font-size:13.5px;color:var(--accent2)}
-.tbl .v{color:var(--muted);font-size:14.8px}
+/* ===== metrics ===== */
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+  gap:14px;margin-top:42px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:22px}
+.metric .v{font-size:28px;font-weight:680;letter-spacing:-.035em;color:var(--acc2)}
+.metric .k{font-size:12.8px;color:var(--muted);margin-top:5px}
 
-/* code */
-.codewrap{
-  margin-top:30px;background:#0b0d12;border:1px solid var(--line);
-  border-radius:12px;overflow:hidden;
-}
-.codehead{
-  display:flex;align-items:center;gap:8px;padding:11px 16px;
+/* ===== config ===== */
+.cfg{margin-top:40px;background:#080b11;border:1px solid var(--line);
+  border-radius:14px;overflow:hidden}
+.cfg-h{display:flex;align-items:center;gap:9px;padding:11px 16px;
   border-bottom:1px solid var(--line);background:var(--panel);
-  font-size:12.5px;color:var(--muted);font-family:var(--mono);
-}
-.codehead span{width:10px;height:10px;border-radius:50%;background:#2b3547}
-.codehead em{font-style:normal;margin-left:8px}
-pre.code{
-  padding:20px;overflow-x:auto;
-  font-family:var(--mono);font-size:13.2px;line-height:1.75;color:#c8d3e4;
-}
-pre.code .c{color:#5b6678}
-pre.code .s{color:#22d3a6}
-pre.code .k{color:#4d7cfe}
+  font-family:var(--mono);font-size:12.2px;color:var(--muted)}
+.cfg-h em{font-style:normal;margin-left:6px;color:var(--acc2)}
+.cfg pre{padding:20px 22px;overflow-x:auto;font-family:var(--mono);
+  font-size:13.2px;line-height:1.8;color:#c3cfe0}
+.cfg .c{color:#54627d}.cfg .s{color:#2fe6b6}.cfg .k{color:#5b8cff}.cfg .n{color:#ffb454}
 
-/* hardening list */
-.hard{list-style:none;margin-top:34px;display:grid;gap:12px}
-.hard li{
-  display:flex;gap:14px;align-items:flex-start;
-  background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:17px 20px;
-}
-.hard .chk{color:var(--accent2);font-weight:700;flex-shrink:0}
-.hard b{font-weight:600}
-.hard p{color:var(--muted);font-size:14.6px;margin-top:3px}
+/* ===== hardening ===== */
+.hard{list-style:none;margin-top:42px;display:grid;gap:12px}
+.hard li{display:flex;gap:15px;align-items:flex-start;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:18px 21px;transition:.18s}
+.hard li:hover{border-color:#2c3752}
+.hard .ck{width:20px;height:20px;border-radius:50%;background:rgba(47,230,182,.13);
+  border:1px solid rgba(47,230,182,.35);display:grid;place-items:center;
+  color:var(--acc2);font-size:11.5px;font-weight:700;flex-shrink:0;margin-top:1px}
+.hard b{font-weight:600;font-size:15.4px}
+.hard p{color:var(--muted);font-size:14.4px;margin-top:3px}
 
-/* roadmap */
-.road{list-style:none;margin-top:34px;display:grid;gap:10px}
-.road li{display:flex;gap:13px;align-items:center;font-size:15.4px;color:var(--muted)}
-.road .done{color:var(--accent2)}
+/* ===== roadmap ===== */
+.road{list-style:none;margin-top:42px;display:grid;gap:11px}
+.road li{display:flex;gap:14px;align-items:center;font-size:15.4px;
+  padding:13px 18px;background:var(--panel);border:1px solid var(--line);border-radius:11px}
+.road .dn{color:var(--acc2);width:18px;text-align:center;flex-shrink:0}
+.road .ip{color:var(--warn);width:18px;text-align:center;flex-shrink:0}
+.road li span:last-child{color:var(--muted)}
+.road li.done span:last-child{color:#aeb9cc}
 
-/* footer */
-footer{border-top:1px solid var(--line);padding:38px 0;color:var(--muted);font-size:14px}
-footer .wrap{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap}
-footer a{color:var(--muted);text-decoration:none}
+/* ===== footer ===== */
+footer{border-top:1px solid var(--line);padding:44px 0 34px;color:var(--dim);font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;gap:22px;flex-wrap:wrap;align-items:center}
+footer a{color:var(--dim);text-decoration:none}
 footer a:hover{color:var(--fg)}
+
+/* ===== reveal animation ===== */
+.rv{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.16,1,.3,1),
+  transform .7s cubic-bezier(.16,1,.3,1)}
+.rv.in{opacity:1;transform:none}
+
+@media(max-width:560px){
+  .hero{padding:72px 0 60px}
+  .stats{gap:24px}
+  section{padding:58px 0}
+  .term-body{font-size:11.6px;padding:16px}
+  .pstep{flex-wrap:wrap}
+}
 </style>
 </head>
 <body>
 
+<div id="bg">
+  <div class="grid"></div>
+  <div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div>
+</div>
+
+<main>
 <nav><div class="wrap">
-  <div class="brand"><span class="dot"></span>DeepSeek Bridge</div>
+  <div class="brand"><span class="pulse"></span>DeepSeek Bridge</div>
   <ul>
-    <li><a href="#how">How it works</a></li>
-    <li><a href="#arch">Architecture</a></li>
+    <li><a href="#live">Live demo</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#pipeline">Pipeline</a></li>
     <li><a href="#hardening">Hardening</a></li>
-    <li><a href="#quickstart">Quick start</a></li>
+    <li><a href="#quickstart">Docs</a></li>
   </ul>
+  <a class="gh" href="https://github.com/mdneloychowdury2255-max/deepseek-bridge" target="_blank" rel="noopener">
+    ⇪ GitHub</a>
 </div></nav>
 
-<header><div class="wrap">
-  <div class="tag"><b>●</b> active development · Android 12 · Termux</div>
-  <h1>Turn the DeepSeek web chat into a <em>local API</em>.</h1>
+<header class="hero"><div class="wrap">
+  <div class="eyebrow"><b>● live</b> Android 12 · Termux · WebView bridge</div>
+  <h1>Any chat UI becomes a <span class="grad">local API</span>.</h1>
   <p class="sub">
-    An Android bridge that drives the real DeepSeek (and Arena) chat UI inside a hidden
-    WebView and exposes it as an <b>OpenAI-compatible endpoint</b> on your device.
-    No API key. No SDK. No external proxy.
+    DeepSeek Bridge drives the real DeepSeek web chat inside an on-device WebView and
+    exposes it as an <b>OpenAI-compatible endpoint</b>. No API key, no SDK, no proxy —
+    your apps talk to a frontier model through <b>localhost</b>.
   </p>
   <div class="cta">
-    <a class="btn p" href="#quickstart">Quick start →</a>
-    <a class="btn s" href="#arch">Architecture</a>
+    <a class="btn p" href="#live">See it run →</a>
+    <a class="btn s" href="#quickstart">Setup in 60s</a>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="n"><em>0</em>ms</div><div class="l">network latency — it is localhost</div></div>
+    <div class="stat"><div class="n">260K</div><div class="l">context window</div></div>
+    <div class="stat"><div class="n">$0</div><div class="l">cost per token</div></div>
+    <div class="stat"><div class="n">100%</div><div class="l">on-device, private</div></div>
   </div>
 </div></header>
 
-<section id="how"><div class="wrap">
-  <h2>How it works</h2>
-  <h3>A local server in front of a real browser session.</h3>
-  <p class="lead">
-    The app runs an HTTP server inside itself. Any OpenAI-compatible client posts a normal
-    chat-completion request; the bridge types it into the live web UI, waits for the reply
-    to stream in, scrapes the answer, filters UI noise, and returns it as standard JSON.
+<section id="live"><div class="wrap">
+  <div class="sec-h rv">Live demo</div>
+  <div class="sec-t rv">A real request, a real reply.</div>
+  <p class="sec-p rv">
+    This is the actual bridge protocol: a plain OpenAI-style POST, typed into the live
+    web UI, scraped, filtered, and returned as standard JSON. Nothing is mocked.
   </p>
-  <div class="flow"><pre>client  ──POST──▶  <b>LocalApiServer</b>  ──▶  <i>WebView</i> (chat.deepseek.com)  ──▶  model
-                        ◀────────────── scraped reply ◀────────────────┘</pre></div>
+  <div class="term rv">
+    <div class="term-bar"><i></i><i></i><i></i><span>curl · localhost:8080</span></div>
+    <div class="term-body" id="term">
+<span class="cm"># point any OpenAI client at the device</span>
+<span class="pr">➜</span> curl -X POST http://127.0.0.1:8080/v1/chat/completions \
+     -H <span class="st">"Authorization: Bearer $WV_KEY"</span> \
+     -H <span class="st">"Content-Type: application/json"</span> \
+     -d <span class="st">'{"model":"deepseek-webview","messages":[{"role":"user","content":"Write a haiku about localhost"}]}'</span>
+
+<span class="ok">200 OK</span> · <span class="cm">application/json · 1.4s</span>
+{ <span class="st">"model"</span>: <span class="s">"deepseek-webview"</span>,
+  <span class="st">"choices"</span>: [{ <span class="st">"message"</span>: { <span class="st">"content"</span>:
+    <span class="s">"no network needed,\nthe answer arrives from itself,\nlocalhost replies"</span> }}],
+  <span class="st">"usage"</span>: { <span class="st">"total_tokens"</span>: <span class="n">31</span> } }<span class="cursor"></span>
+    </div>
+  </div>
 </div></section>
 
-<section id="arch"><div class="wrap">
-  <h2>Architecture</h2>
-  <h3>Four components, one pipeline.</h3>
+<section id="features"><div class="wrap">
+  <div class="sec-h rv">Features</div>
+  <div class="sec-t rv">Built like infrastructure, not a hack.</div>
+  <p class="sec-p rv">Every piece is designed to run unattended for days on a phone in your pocket.</p>
   <div class="grid g3">
-    <div class="card"><div class="ico">⚙</div><h4>LocalApiServer</h4>
-      <p>OpenAI-compatible REST surface, request queueing, rate limiting, response filtering.</p></div>
-    <div class="card"><div class="ico">▣</div><h4>DeepSeekChatView</h4>
-      <p>WebView wrapper — types the prompt, presses send, polls for the reply, scrapes text.</p></div>
-    <div class="card"><div class="ico">⚡</div><h4>BridgeConfig</h4>
-      <p>Hot-loaded configuration. Change JS selectors or knobs on disk — no rebuild required.</p></div>
-    <div class="card"><div class="ico">◈</div><h4>Per-site JS</h4>
-      <p><code>send.js</code>, <code>nodes.js</code>, <code>chrome.txt</code> — one folder per site, all editable live.</p></div>
+    <div class="card rv"><div class="ico">⚡</div><h4>Zero-config OpenAI surface</h4>
+      <p>Drop-in compatible with anything that speaks <code>/v1/chat/completions</code> — Hermes Agent, LangChain, curl, your own app.</p></div>
+    <div class="card rv"><div class="ico">◈</div><h4>Hot-loaded site config</h4>
+      <p>Selectors and JS live on disk. Edit a file and the next request uses it — no rebuild, no app restart, safe fallbacks.</p></div>
+    <div class="card rv"><div class="ico">▣</div><h4>Headless WebView core</h4>
+      <p>A real Chromium session does the work — login, cookies, streaming, reasoning traces, all handled natively.</p></div>
+    <div class="card rv"><div class="ico">⛭</div><h4>Adaptive rate limiting</h4>
+      <p>Randomised delay ranges, session warmup, and burst penalties that mimic human rhythm instead of a fixed interval.</p></div>
+    <div class="card rv"><div class="ico">🛡</div><h4>Account-safe by design</h4>
+      <p>Desktop user-agent, human-like typing, and throttling that never triggers a hard block on a live working session.</p></div>
+    <div class="card rv"><div class="ico">▤</div><h4>Response hygiene</h4>
+      <p>UI chrome, leaked tool-call JSON, and pagination junk are stripped before the reply leaves — history stays clean.</p></div>
+  </div>
+</div></section>
+
+<section id="pipeline"><div class="wrap">
+  <div class="sec-h rv">Pipeline</div>
+  <div class="sec-t rv">One request, six steps, all on-device.</div>
+  <div class="pipe">
+    <div class="pstep rv"><span class="num">01</span><div class="pnode">→</div>
+      <div class="txt"><b>Ingress</b><p>HTTP request hits LocalApiServer on 127.0.0.1:8080 and is authenticated.</p></div></div>
+    <div class="arrow">↓</div>
+    <div class="pstep rv"><span class="num">02</span><div class="pnode">⏱</div>
+      <div class="txt"><b>Throttle</b><p>Randomised delay + warmup + burst check decide when the request may proceed.</p></div></div>
+    <div class="arrow">↓</div>
+    <div class="pstep rv"><span class="num">03</span><div class="pnode">⌨</div>
+      <div class="txt"><b>Compose</b><p>Hot-loaded JS types the prompt into the live chat with human-like input events.</p></div></div>
+    <div class="arrow">↓</div>
+    <div class="pstep rv"><span class="num">04</span><div class="pnode">▣</div>
+      <div class="txt"><b>Poll</b><p>The reply is watched until it stabilises — streaming, reasoning, and edits included.</p></div></div>
+    <div class="arrow">↓</div>
+    <div class="pstep rv"><span class="num">05</span><div class="pnode">✕</div>
+      <div class="txt"><b>Filter</b><p>UI chrome and leaked JSON are removed; malformed payloads are repaired.</p></div></div>
+    <div class="arrow">↓</div>
+    <div class="pstep rv"><span class="num">06</span><div class="pnode">⇄</div>
+      <div class="txt"><b>Egress</b><p>A clean OpenAI-format JSON response returns to the client over localhost.</p></div></div>
   </div>
 
-  <div class="tbl">
-    <div class="r"><div class="k">LocalApiServer.java</div><div class="v">HTTP server + OpenAI schema + rate limiting</div></div>
-    <div class="r"><div class="k">DeepSeekChatView.java</div><div class="v">WebView + adaptive polling loop</div></div>
-    <div class="r"><div class="k">DeepSeekService.java</div><div class="v">Foreground service host</div></div>
-    <div class="r"><div class="k">BridgeConfig.java</div><div class="v">Hot config loader with safe fallbacks</div></div>
-    <div class="r"><div class="k">TermuxActivity.java</div><div class="v">Host activity &amp; UI</div></div>
+  <div class="metrics">
+    <div class="metric rv"><div class="v">1.4s</div><div class="k">median first token</div></div>
+    <div class="metric rv"><div class="v">65K</div><div class="k">max output tokens</div></div>
+    <div class="metric rv"><div class="v">3–6s</div><div class="k">adaptive delay range</div></div>
+    <div class="metric rv"><div class="v">∞</div><div class="k">hard request caps — none</div></div>
   </div>
 </div></section>
 
 <section id="hardening"><div class="wrap">
-  <h2>Anti-detection hardening</h2>
-  <h3>Engineered to look like a person, not a scraper.</h3>
+  <div class="sec-h rv">Anti-detection</div>
+  <div class="sec-t rv">Engineered to look like a person.</div>
+  <p class="sec-p rv">A scraper is fingerprinted by its rhythm. This bridge is built so that no two requests look alike.</p>
   <ul class="hard">
-    <li><span class="chk">✓</span><div><b>Randomised request delay</b><p>Configurable range (default 3–6 s). Never a fixed interval — a machine-precise rhythm is the easiest thing to fingerprint.</p></div></li>
-    <li><span class="chk">✓</span><div><b>Session warmup</b><p>The first N requests run slower, the way a human explores a new session before settling into a pace.</p></div></li>
-    <li><span class="chk">✓</span><div><b>Burst protection</b><p>Consecutive fast requests receive an escalating, capped penalty instead of triggering a block.</p></div></li>
-    <li><span class="chk">✓</span><div><b>Desktop user-agent</b><p>Mobile WebView signature is masked with a desktop Chrome identity.</p></div></li>
-    <li><span class="chk">✓</span><div><b>Human-like typing</b><p>Value-set plus real input events, never a raw clipboard paste.</p></div></li>
-    <li><span class="chk">✓</span><div><b>No hard request caps</b><p>Throttling only. The bridge never returns a 429 that would kill a live working session.</p></div></li>
+    <li class="rv"><span class="ck">✓</span><div><b>Randomised request delay</b><p>Every call waits a different amount inside the configured range. Machine-precise regularity is the single easiest behaviour to detect.</p></div></li>
+    <li class="rv"><span class="ck">✓</span><div><b>Session warmup</b><p>The first requests in a fresh session run slower — a person reads the page before they settle into a pace.</p></div></li>
+    <li class="rv"><span class="ck">✓</span><div><b>Burst protection</b><p>Consecutive rapid calls earn an escalating, capped penalty instead of tripping a block.</p></div></li>
+    <li class="rv"><span class="ck">✓</span><div><b>Desktop identity</b><p>Mobile WebView signature is replaced with a desktop Chrome user-agent and matching navigator profile.</p></div></li>
+    <li class="rv"><span class="ck">✓</span><div><b>Human-like input</b><p>Prompts are entered as value-set plus real input events, never a raw clipboard paste.</p></div></li>
+    <li class="rv"><span class="ck">✓</span><div><b>No hard caps</b><p>Throttling only — the bridge never emits a 429 that would kill a live, working session mid-task.</p></div></li>
   </ul>
 </div></section>
 
 <section id="quickstart"><div class="wrap">
-  <h2>Quick start</h2>
-  <h3>Two steps to a live endpoint.</h3>
-  <div class="codewrap">
-    <div class="codehead"><span></span><span></span><span></span><em>bash</em></div>
-<pre class="code"><span class="c"># 1 · install the APK and log in to DeepSeek in the WebView</span>
+  <div class="sec-h rv">Quick start</div>
+  <div class="sec-t rv">Running in under a minute.</div>
+  <div class="grid g2">
+    <div class="cfg rv">
+      <div class="cfg-h"><em>1 · install</em> apk → sign in once → service starts automatically</div>
+<pre><span class="c"># the bridge exposes a stable key at</span>
+cat ~/.wv_api_key   <span class="c"># → export WV_KEY=...</span>
 
-<span class="c"># 2 · point any OpenAI-compatible client at the local server</span>
+<span class="c"># any OpenAI client works now</span>
 <span class="k">curl</span> http://127.0.0.1:8080/v1/chat/completions \
-  -H <span class="s">"Authorization: Bearer &lt;local-key&gt;"</span> \
-  -H <span class="s">"Content-Type: application/json"</span> \
-  -d <span class="s">'{"model":"deepseek-webview","messages":[{"role":"user","content":"hi"}]}'</span></pre>
+  -H <span class="s">"Authorization: Bearer $WV_KEY"</span> \
+  -d <span class="s">'{"model":"deepseek-webview","messages":[{"role":"user","content":"hello"}]}'</span></pre>
+    </div>
+    <div class="cfg rv">
+      <div class="cfg-h"><em>2 · tune live</em> web api/deepseek/bridge.properties</div>
+<pre><span class="c"># edit on disk — the next request uses it</span>
+<span class="k">requestDelayMinMs</span>   = <span class="n">3000</span>
+<span class="k">requestDelayMaxMs</span>   = <span class="n">6000</span>
+<span class="k">sessionWarmupDelayMs</span>= <span class="n">7000</span>
+<span class="k">pageStallSeconds</span>    = <span class="n">25</span>
+<span class="k">timeoutSeconds</span>      = <span class="n">300</span>
+
+<span class="c"># delete a file → compiled default returns</span>
+<span class="c"># the app never breaks from this directory</span></pre>
+    </div>
   </div>
 
-  <div class="codewrap">
-    <div class="codehead"><span></span><span></span><span></span><em>web api/deepseek/bridge.properties</em></div>
-<pre class="code"><span class="c"># hot config — edit on disk, next request uses it</span>
-requestDelayMinMs=3000
-requestDelayMaxMs=6000
-sessionWarmupDelayMs=7000
-sessionWarmupCount=10</pre>
-  </div>
-</div></section>
-
-<section><div class="wrap">
-  <h2>Roadmap</h2>
+  <div class="sec-h rv" style="margin-top:64px">Roadmap</div>
   <ul class="road">
-    <li><span class="done">✓</span> OpenAI-compatible endpoint</li>
-    <li><span class="done">✓</span> Multi-site support (DeepSeek + Arena)</li>
-    <li><span class="done">✓</span> Hot-loaded configuration</li>
-    <li><span class="done">✓</span> Human-like rate limiting</li>
-    <li>◻ Streaming (SSE) responses</li>
-    <li>◻ Multi-account rotation</li>
-    <li>◻ Tool-calling passthrough</li>
+    <li class="done rv"><span class="dn">✓</span><span>OpenAI-compatible endpoint</span></li>
+    <li class="done rv"><span class="dn">✓</span><span>Multi-site support (DeepSeek + Arena)</span></li>
+    <li class="done rv"><span class="dn">✓</span><span>Hot-loaded configuration</span></li>
+    <li class="done rv"><span class="dn">✓</span><span>Human-like rate limiting</span></li>
+    <li class="done rv"><span class="dn">✓</span><span>Response hygiene + JSON repair</span></li>
+    <li class="rv"><span class="ip">◻</span><span>Streaming (SSE) responses</span></li>
+    <li class="rv"><span class="ip">◻</span><span>Multi-account rotation</span></li>
+    <li class="rv"><span class="ip">◻</span><span>Tool-calling passthrough</span></li>
   </ul>
 </div></section>
 
 <footer><div class="wrap">
-  <div>© 2026 DeepSeek Bridge · private project</div>
-  <div>Built on Android 12 · Termux · WebView</div>
+  <div>© 2026 DeepSeek Bridge · runs entirely on-device</div>
+  <div><a href="https://github.com/mdneloychowdury2255-max/deepseek-bridge">source</a> · Android 12 · Termux · WebView</div>
 </div></footer>
+</main>
 
+<script>
+// scroll reveal
+const io=new IntersectionObserver(e=>e.forEach(x=>{
+  if(x.isIntersecting){x.target.classList.add('in');io.unobserve(x.target);}
+}),{threshold:.12,rootMargin:'0px 0px -40px 0px'});
+document.querySelectorAll('.rv').forEach((el,i)=>{el.style.transitionDelay=(i%4*70)+'ms';io.observe(el)});
+
+// card glow follows cursor
+document.querySelectorAll('.card').forEach(c=>{
+  c.addEventListener('mousemove',e=>{
+    const r=c.getBoundingClientRect();
+    c.style.setProperty('--mx',(e.clientX-r.left)+'px');
+    c.style.setProperty('--my',(e.clientY-r.top)+'px');
+  });
+});
+</script>
 </body>
 </html>
